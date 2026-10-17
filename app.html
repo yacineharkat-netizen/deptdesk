@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-version="1">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeptDesk</title>
+<link rel="stylesheet" href="css/style.css?v=1">
+<meta name="theme-color" content="#0B2545">
+</head>
+<body>
+<div class="topbar">
+  <div class="spread">
+    <div class="row"><span class="brand">DeptDesk</span>
+      <select id="levelSelect" aria-label="Level"></select>
+      <select id="semesterSelect" aria-label="Semester"></select></div>
+    <div class="row"><span class="who" id="who"></span><button id="logoutBtn">Log out</button></div>
+  </div>
+</div>
+<div class="level-strip"></div>
+<div id="netBanner" class="net-banner hidden" role="status">⚠ Connection lost — reconnecting…</div>
+<nav class="tabs" id="tabs"></nav>
+<main id="main"><p class="muted">Loading…</p></main>
+<script src="lib/supabase.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js?v=1"></script>
+<script src="js/excel.js?v=1"></script>
+<script src="js/groups.js?v=1"></script>
+<script src="js/app.js?v=1"></script>
+<script>
+// Version check (kept inside the page on purpose: it must work even if a .js or .css file is old).
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.DD_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    var css = getComputedStyle(document.documentElement).getPropertyValue("--dd-version").replace(/["'\s]/g, "");
+    if (css !== expected) wrong.push("css/style.css (v" + (css || "?") + ")");
+    if (wrong.length) document.body.insertAdjacentHTML("afterbegin", '<div style="background:#B83227;color:#fff;padding:10px;font-weight:600">Version problem: ' + wrong.join(", ") + ". Reload the page (Ctrl+F5).</div>");
+  });
+})();
+</script>
+</body>
+</html>

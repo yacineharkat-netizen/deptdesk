@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en" data-version="1">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeptDesk · Sign in</title>
+<link rel="stylesheet" href="css/style.css?v=1">
+<meta name="theme-color" content="#0B2545">
+</head>
+<body>
+<div id="netBanner" class="net-banner hidden" role="status">⚠ Connection lost — reconnecting…</div>
+<div class="narrow">
+  <div class="brand-big">DeptDesk</div>
+  <div class="brand-sub" id="homeLine"></div>
+
+  <div id="viewAuth" class="card hidden">
+    <div class="seg"><button id="segLogin" class="on">Log in</button><button id="segSignup">Create my account</button></div>
+    <div id="formLogin">
+      <label for="email">E-mail</label><input id="email" type="email" autocomplete="username">
+      <label for="password">Password</label><input id="password" type="password" autocomplete="current-password">
+      <button id="loginBtn" style="width:100%;margin-top:14px">Log in</button>
+      <p class="muted">Forgotten password: ask the head of your level (or the administrator) to send you a reset link.</p>
+    </div>
+    <div id="formSignup" class="hidden">
+      <p class="muted" style="margin-top:0">Create your account only if you received an <strong>invitation code</strong> (head, delegate or teacher).</p>
+      <label for="suEmail">E-mail</label><input id="suEmail" type="email" autocomplete="username">
+      <label for="suPassword">Password (8 characters or more)</label><input id="suPassword" type="password" autocomplete="new-password">
+      <label for="suPassword2">Password again</label><input id="suPassword2" type="password" autocomplete="new-password">
+      <button id="signupBtn" style="width:100%;margin-top:14px">Create my account</button>
+    </div>
+  </div>
+
+  <div id="viewCode" class="card hidden">
+    <h2>Invitation code</h2>
+    <p class="muted" style="margin-top:0">Type the 8-character code you received, and your name as colleagues and students know it.</p>
+    <label for="code">Code</label><input id="code" autocomplete="off" autocapitalize="characters" maxlength="12" style="text-transform:uppercase;letter-spacing:3px;font-weight:700">
+    <label for="fullName">Your full name</label><input id="fullName" autocomplete="name" placeholder="e.g. Dr Yacine Harkat">
+    <button id="claimBtn" style="width:100%;margin-top:14px">Join</button>
+    <div class="spread" style="margin-top:12px"><span class="muted" id="codeWho"></span><button class="small secondary" id="codeLogout">Log out</button></div>
+  </div>
+
+  <div id="viewWait" class="card"><p class="muted">Loading…</p></div>
+</div>
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js?v=1"></script>
+<script src="js/index.js?v=1"></script>
+<script>
+// Version check (kept inside the page on purpose: it must work even if a .js or .css file is old).
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.DD_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    var css = getComputedStyle(document.documentElement).getPropertyValue("--dd-version").replace(/["'\s]/g, "");
+    if (css !== expected) wrong.push("css/style.css (v" + (css || "?") + ")");
+    if (wrong.length) document.body.insertAdjacentHTML("afterbegin", '<div style="background:#B83227;color:#fff;padding:10px;font-weight:600">Version problem: ' + wrong.join(", ") + ". Reload the page (Ctrl+F5).</div>");
+  });
+})();
+</script>
+</body>
+</html>
