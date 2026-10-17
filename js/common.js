@@ -1,5 +1,5 @@
 // DeptDesk - shared helpers for all pages.
-(window.DD_FILES = window.DD_FILES || {})["common.js"] = "1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["common.js"] = "2"; // file version, checked by the page
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -41,6 +41,23 @@ const ERROR_MESSAGES = {
   BAD_MODE: "Unknown mode.",
   NO_GROUPS: "Set the number of groups of this section first (Setup tab).",
   NETWORK: "Network problem. Check your connection.",
+  // version 2
+  BAD_TARGET: "This group does not exist in this section (or does not fit: a TD is for a G group, a TP for an SG sub-group).",
+  BAD_EMAIL: "This e-mail address is not valid.",
+  BAD_CODE: "Module code: 1 to 20 letters or digits.",
+  MODULE_EXISTS: "A module with this code already exists in this semester.",
+  BAD_KIND: "Unknown kind.",
+  ACTIVITY_IN_USE: "This activity already has sessions or timetable slots: it cannot be removed.",
+  MODULE_IN_USE: "This module already has sessions recorded: it cannot be deleted.",
+  BAD_DATE: "Check the date (inside the semester).",
+  FUTURE_DATE: "A session is recorded once it has happened (not a future date).",
+  TOO_LATE_TO_CHANGE: "Recorded more than 7 days ago: only the head can change it now.",
+  NOT_YOUR_SESSION: "This session is not yours.",
+  COMMENT_REQUIRED: "Write what is wrong (a short comment).",
+  ALREADY_RECORDED: "This session is already recorded: change it instead.",
+  BAD_TIME: "Check the day and the hours (the end after the start).",
+  BAD_PARITY: "Week: every week, A or B.",
+  BAD_LINK: "This link is not valid any more. Ask your delegate for the new one.",
 };
 
 function errorText(err) {
@@ -123,12 +140,15 @@ function poller(fn, everyMs, when) {
   return p.start();
 }
 
-function $(id) { return document.getElementById(id); }
+// An element of the page. When it is not there any more (the user moved to another tab while a call was running),
+// a detached element is returned, so that late answers change nothing instead of failing. has(id) tests presence.
+function $(id) { return document.getElementById(id) || document.createElement("div"); }
+function has(id) { return document.getElementById(id) !== null; }
 function esc(text) {
   return String(text == null ? "" : text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 function toast(message, kind) {
-  let box = $("toast");
+  let box = document.getElementById("toast");
   if (!box) { box = document.createElement("div"); box.id = "toast"; document.body.appendChild(box); }
   box.textContent = message;
   box.className = "show " + (kind || "");
@@ -162,6 +182,14 @@ function askInPage(opts) {
     if (opts.onOpen) opts.onOpen(wrap);
   });
 }
+
+// v2: an error shown in a red frame inside a part of the page (a toast can be missed).
+function errorBox(message) { return `<div class="alert-error" role="alert">⚠ ${esc(message)}</div>`; }
+const DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const KIND_NAME = { course: "Course", td: "TD", tp: "TP" };
+// Today in Algiers (yyyy-mm-dd).
+function todayAlgiers() { return new Date(Date.now() + 3600000).toISOString().slice(0, 10); }
+function dayIndexOf(iso) { return (new Date(iso + "T12:00:00Z").getUTCDay() + 1) % 7; }
 
 // Network banner: shown while the last call failed for network reasons.
 function watchNetwork(bannerId) {

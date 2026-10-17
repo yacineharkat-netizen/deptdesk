@@ -1,5 +1,5 @@
 /* DeptDesk - shared styles (mobile first) */
-:root { --dd-version: "1";
+:root { --dd-version: "2";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --bg: #F5F8FB; --white: #FFFFFF;
   --level: var(--teal);
@@ -119,3 +119,33 @@ main { max-width: 1100px; margin: 0 auto; padding: 14px 12px 60px; }
   .card { padding: 12px; }
 }
 @media print { .topbar, .tabs, button, .no-print { display: none !important; } body { background: #fff; } .card { box-shadow: none; } }
+
+/* ---------- version 2 ---------- */
+.alert-error { background: #FBE6E3; border: 2px solid var(--red); color: var(--red); border-radius: 12px; padding: 10px 12px; margin: 8px 0; font-weight: 600; }
+.sub-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.sub-tabs button { background: var(--ice); color: var(--navy); }
+.sub-tabs button.on { background: var(--navy); color: #fff; }
+.slot { border: 1px solid var(--ice2); border-left: 6px solid var(--mod, var(--teal)); border-radius: 12px; padding: 8px 10px; background: #fff; }
+.slot .t { font-weight: 700; }
+.slot .m { color: var(--muted); font-size: 13px; }
+.slot.done { background: #F1F8F3; }
+.slot.cancelled { background: #FBEDEB; }
+.day-row { display: grid; grid-template-columns: 150px 1fr; gap: 8px; margin-bottom: 10px; align-items: start; }
+.day-row .dname { font-weight: 800; color: var(--navy); padding-top: 8px; }
+.day-row .slots { display: flex; flex-wrap: wrap; gap: 8px; }
+.day-row .slots .slot { flex: 1 1 230px; max-width: 360px; }
+.gap-bad { color: var(--red); font-weight: 800; }
+.gap-mid { color: #A34A0B; font-weight: 700; }
+.gap-ok { color: var(--green); font-weight: 700; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 10px; padding: 2px 8px; background: var(--ice); color: var(--navy); }
+.pill.online { background: #E3EEFA; color: #1F4E8C; }
+.pill.cancelled { background: #F8E1DE; color: var(--red); }
+.pill.makeup { background: #EDE3F7; color: #5B3A8C; }
+.pill.disputed { background: #F8E1DE; color: var(--red); }
+.pill.confirmed, .pill.auto_confirmed { background: #DDF0E4; color: var(--green); }
+.qr-box svg, .qr-box img { width: 180px; height: 180px; }
+.week-list td { padding: 4px 8px; }
+@media (max-width: 640px) { .day-row { grid-template-columns: 1fr; } .day-row .slots .slot { max-width: none; } }
+@media print { .slot { break-inside: avoid; } .day-row .slots .slot { max-width: none; } }
+
+.linklike { background: none; color: var(--teal); padding: 0 2px; min-height: 0; text-decoration: underline; font-weight: 600; }

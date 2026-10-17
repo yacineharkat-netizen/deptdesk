@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" data-version="2">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timetable</title>
+<link rel="stylesheet" href="css/style.css?v=2">
+<meta name="theme-color" content="#0B2545">
+</head>
+<body>
+<div id="netBanner" class="net-banner hidden" role="status">⚠ Connection lost — reconnecting…</div>
+<div class="narrow" style="max-width:900px">
+  <div class="brand-big" id="pTitle">Timetable</div>
+  <div class="brand-sub" id="pSub"></div>
+  <div class="card no-print">
+    <label for="pMat">Your student number (to see your TD group and TP sub-group)</label>
+    <div class="row"><input id="pMat" inputmode="numeric" autocomplete="off" style="flex:1 1 200px"><button id="pFind">Show my groups</button></div>
+    <div id="pMine"></div>
+    <label for="pView">Show</label><select id="pView"></select>
+  </div>
+  <div class="card"><p class="muted" id="pWeek" style="margin-top:0"></p><div id="pBody"><p class="muted">Loading…</p></div></div>
+  <p class="muted small-text no-print" id="pFoot"></p>
+</div>
+<script src="lib/supabase.js"></script>
+<script src="config.js"></script>
+<script src="js/common.js?v=2"></script>
+<script src="js/public.js?v=2"></script>
+<script>
+(function () {
+  window.addEventListener("load", function () {
+    var expected = document.documentElement.dataset.version, files = window.DD_FILES || {}, wrong = [];
+    Object.keys(files).forEach(function (f) { if (files[f] !== expected) wrong.push("js/" + f + " (v" + files[f] + ")"); });
+    var css = getComputedStyle(document.documentElement).getPropertyValue("--dd-version").replace(/["'\s]/g, "");
+    if (css !== expected) wrong.push("css/style.css (v" + (css || "?") + ")");
+    if (wrong.length) document.body.insertAdjacentHTML("afterbegin", '<div style="background:#B83227;color:#fff;padding:10px;font-weight:600">Version problem: ' + wrong.join(", ") + ". Reload the page (Ctrl+F5).</div>");
+  });
+})();
+</script>
+</body>
+</html>

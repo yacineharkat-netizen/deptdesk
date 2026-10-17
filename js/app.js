@@ -1,8 +1,8 @@
 // DeptDesk - application shell: level and semester, tabs by role, Setup, Students, People, Log, Admin.
 // The Groups tab is in groups.js.
-(window.DD_FILES = window.DD_FILES || {})["app.js"] = "1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["app.js"] = "2"; // file version, checked by the page
 
-const APP = { me: null, level: null, semesters: [], semester: null, sections: [], tab: null, email: "" };
+const APP = { me: null, level: null, semesters: [], semester: null, sections: [], tab: null, email: "", modules: null, teachers: null };
 const ROLE_LABEL = { head: "Head", delegate: "Delegate", teacher: "Teacher", admin: "Administrator" };
 const STATUS_LABEL = { N: "normal", D: "repeating", EXT: "external" };
 
@@ -44,7 +44,7 @@ async function openLevel() {
 }
 
 async function openSemester() {
-  APP.sections = [];
+  APP.sections = []; APP.modules = null; APP.teachers = null;
   if (APP.semester) { try { APP.sections = await rpc("api_sections", { p_semester: APP.semester.id }); } catch (e) { toast(e.message, "error"); } }
   renderTabs();
 }
@@ -56,6 +56,30 @@ function ctxNames() {
   return { levelName: APP.level ? APP.level.name : "", levelShort: APP.level ? (APP.level.short_name || APP.level.name) : "",
     semesterLabel: APP.semester ? semesterLabel(APP.semester) : "" };
 }
+// v2: modules (with activities and teachers) and the teachers directory, loaded when a tab needs them.
+async function loadRefs(force) {
+  if (!APP.semester) { APP.modules = []; APP.teachers = []; return; }
+  if (force || !APP.modules) APP.modules = await rpc("api_modules", { p_semester: APP.semester.id });
+  if (force || !APP.teachers) APP.teachers = await rpc("api_teachers", { p_level: APP.level.level_id });
+}
+// "AWP · TD" options of the activities of the semester.
+function activityOptions(selected, onlyKinds) {
+  return (APP.modules || []).map((m) => m.activities.filter((a) => !onlyKinds || onlyKinds.includes(a.kind)).map((a) =>
+    `<option value="${a.id}" ${a.id === selected ? "selected" : ""}>${esc(m.code)} · ${KIND_NAME[a.kind]}${m.name ? " — " + esc(m.name) : ""}</option>`).join("")).join("");
+}
+function activityById(id) {
+  for (const m of APP.modules || []) for (const a of m.activities) if (a.id === id) return Object.assign({ module: m }, a);
+  return null;
+}
+function targetsFor(section, kind) {
+  if (!section) return [""];
+  if (kind === "td") return [...Array(section.td_count).keys()].map((i) => "G" + (i + 1));
+  if (kind === "tp") return [...Array(section.tp_count).keys()].map((i) => "SG" + (i + 1));
+  return [""];
+}
+function mySections() {
+  return role() === "delegate" ? APP.sections.filter((x) => x.name.toUpperCase() === String(APP.level.section || "").toUpperCase()) : APP.sections;
+}
 async function reloadSections() {
   if (!APP.semester) return;
   APP.sections = await rpc("api_sections", { p_semester: APP.semester.id });
@@ -65,7 +89,7 @@ async function reloadSections() {
 function tabsFor() {
   const t = [];
   if (APP.level && !APP.level.expired) {
-    t.push(["groups", "👥 Groups"]);
+    t.push(["followup", "📋 Follow-up"], ["timetable", "🗓 Timetable"], ["groups", "👥 Groups"]);
     if (isHead()) t.push(["students", "🎓 Students"], ["setup", "⚙ Setup"], ["people", "🔑 People"], ["log", "📜 Log"]);
   }
   if (APP.me.is_admin) t.push(["admin", "🏛 Admin"]);
@@ -78,6 +102,7 @@ function renderTabs() {
   $("tabs").querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { APP.tab = b.dataset.tab; prefSet("tab", APP.tab); renderTabs(); });
   $("tabs").classList.toggle("hidden", tabs.length < 2);
   if (typeof GROUPS !== "undefined") GROUPS.stop();
+  window.scrollTo(0, 0);
   renderTab();
 }
 function renderTab() {
@@ -93,10 +118,11 @@ function renderTab() {
   if (APP.tab === "admin") return renderAdmin();
   if (!APP.semester && APP.tab !== "setup" && APP.tab !== "people" && APP.tab !== "log") {
     m.innerHTML = `<div class="card"><h2>No semester yet</h2>${isHead() ? `<p>Create the semester first.</p><button id="goSetup">⚙ Setup</button>` : `<p class="muted">The head has not created the semester yet.</p>`}</div>`;
-    if ($("goSetup")) $("goSetup").onclick = () => { APP.tab = "setup"; renderTabs(); };
+    if (has("goSetup")) $("goSetup").onclick = () => { APP.tab = "setup"; renderTabs(); };
     return;
   }
-  ({ groups: () => GROUPS.render(m), students: renderStudents, setup: renderSetup, people: renderPeople, log: renderLog })[APP.tab]();
+  ({ groups: () => GROUPS.render(m), followup: () => FOLLOW.render(m), timetable: () => TT.render(m),
+     students: renderStudents, setup: renderSetup, people: renderPeople, log: renderLog })[APP.tab]();
 }
 
 // ------------------------------------------------------------------ Setup: semesters and sections
@@ -121,6 +147,7 @@ function renderSetup() {
           <div><label for="semEnds">Last day (exams included)</label><input id="semEnds" type="date"></div>
           <div><label for="semStatus">Status</label><select id="semStatus"><option value="running">running</option><option value="preparing">preparing</option><option value="closed">closed</option></select></div>
         </div>
+        <div class="row fill"><div><label for="semWeekA">A day of the first "week A" (TP every two weeks) — optional</label><input id="semWeekA" type="date"></div></div>
         <p class="muted">A delegate's account is valid until the last day of the current semester; you renew it in one click (People tab).</p>
         <button id="semSave">Save the semester</button> <button id="semNew" class="secondary hidden">New semester instead</button>
       </details>
@@ -135,13 +162,14 @@ function renderSetup() {
         <div><label for="newSecTp">TP sub-groups</label><input id="newSecTp" type="number" min="0" max="60" value="6"></div>
         <div><label for="newSecTol">Tolerance</label><input id="newSecTol" type="number" min="0" max="20" value="1"></div>
         <div><button id="newSecBtn" style="width:100%">Add the section</button></div>
-      </div></div>` : ""}`;
+      </div></div><div id="setup2"></div>` : ""}`;
   let editing = null;
   const fill = (s) => {
     editing = s ? s.id : null;
     $("semFormTitle").textContent = s ? "Edit " + semesterLabel(s) : "New semester";
     $("semYear").value = s ? s.year : defaultYear(); $("semPeriod").value = s ? s.period : 1; $("semCode").value = s ? s.code : "";
     $("semStarts").value = s && s.starts ? s.starts : ""; $("semEnds").value = s && s.ends ? s.ends : ""; $("semStatus").value = s ? s.status : "running";
+    $("semWeekA").value = s && s.week_a_start ? s.week_a_start : "";
     $("semNew").classList.toggle("hidden", !s); $("semForm").open = true;
   };
   document.querySelectorAll("[data-editsem]").forEach((b) => b.onclick = () => fill(APP.semesters.find((s) => s.id === b.dataset.editsem)));
@@ -149,7 +177,8 @@ function renderSetup() {
   $("semSave").onclick = async () => {
     try {
       const id = await rpc("api_semester_save", { p_level: APP.level.level_id, p_id: editing, p_year: $("semYear").value.trim(), p_period: Number($("semPeriod").value),
-        p_code: $("semCode").value, p_starts: $("semStarts").value || null, p_ends: $("semEnds").value || null, p_status: $("semStatus").value });
+        p_code: $("semCode").value, p_starts: $("semStarts").value || null, p_ends: $("semEnds").value || null, p_status: $("semStatus").value,
+        p_week_a_start: $("semWeekA").value || null });
       toast("Semester saved.", "ok"); prefSet("semester", id); APP.tab = "setup"; await openLevel();
     } catch (e) { toast(e.message, "error"); }
   };
@@ -179,6 +208,7 @@ function renderSetup() {
     });
   };
   secList();
+  SETUP2.render($("setup2"));
   $("newSecBtn").onclick = async () => {
     try {
       await rpc("api_section_save", { p_semester: sem.id, p_id: null, p_name: $("newSecName").value, p_td_count: Number($("newSecTd").value),
@@ -259,7 +289,7 @@ async function previewList(file) {
   const box = $("listPreview");
   box.innerHTML = `<p class="muted">Reading…</p>`;
   let book;
-  try { book = await readWorkbookGrid(file); } catch (e) { box.innerHTML = `<p class="badge no">This file cannot be read.</p>`; return; }
+  try { book = await readWorkbookGrid(file); } catch (e) { box.innerHTML = errorBox("This file cannot be read (" + e.message + ")."); return; }
   const counts = book.names.map((n) => book.sheets[n].filter((r) => r.some(Boolean)).length);
   let sheet = book.names[counts.indexOf(Math.max(...counts))];
   const draw = (layout) => {
@@ -292,7 +322,7 @@ async function previewList(file) {
       <label class="tick"><input type="checkbox" id="lpDeactivate"> Students of this semester missing from the file are no longer in the list (they lose their groups; nothing is deleted)</label>
       <button id="lpImport" class="green" style="width:100%;margin-top:8px" ${rows.length ? "" : "disabled"}>Import ${rows.length} students into ${esc(semesterLabel(sem))}</button>
       <div id="lpReport"></div>`;
-    if ($("lpSheet")) $("lpSheet").onchange = () => { sheet = $("lpSheet").value; draw(detectListLayout(book.sheets[sheet])); };
+    if (has("lpSheet")) $("lpSheet").onchange = () => { sheet = $("lpSheet").value; draw(detectListLayout(book.sheets[sheet])); };
     $("lpHeader").onchange = () => { const r = Math.max(0, Number($("lpHeader").value) - 1); draw({ headerRow: r, cols: listColumnsOf(grid[r] || []), info: layout.info }); };
     box.querySelectorAll("[data-col]").forEach((s) => s.onchange = () => { layout.cols[s.dataset.col] = Number(s.value); draw(layout); });
     $("lpImport").onclick = async () => {
@@ -305,7 +335,7 @@ async function previewList(file) {
           ${r.rejected.length ? `<ul class="report">${r.rejected.map((x) => `<li>line ${esc(x.line)}: ${esc(x.reason)} (${esc(x.value)})</li>`).join("")}</ul>` : ""}
           ${r.new_sections.length ? `<p>New section(s): ${esc(r.new_sections.join(", "))} — check their numbers of groups in ⚙ Setup.</p>` : ""}</div>`;
         toast("List imported.", "ok"); await reloadSections(); await loadStudents();
-      } catch (e) { toast(e.message, "error"); $("lpImport").disabled = false; }
+      } catch (e) { $("lpReport").innerHTML = errorBox(e.message); toast(e.message, "error"); $("lpImport").disabled = false; }
     };
   };
   draw(detectListLayout(book.sheets[sheet]));
@@ -322,6 +352,7 @@ async function renderPeople() {
       </div>
       <button id="invBtn" style="margin-top:10px">Create an invitation code</button>
       <div id="invOut"></div></div>
+    <div class="card" id="teachersCard"></div>
     <div class="card"><h2>Members of ${esc(lvl.name)}</h2><div id="members"><p class="muted">Loading…</p></div></div>
     <div class="card"><h2>Codes not used yet</h2><div id="invites"></div></div>`;
   $("invRole").onchange = () => $("invSecBox").classList.toggle("hidden", $("invRole").value !== "delegate");
@@ -338,6 +369,7 @@ async function renderPeople() {
       $("invNote").value = ""; loadPeople();
     } catch (e) { toast(e.message, "error"); }
   };
+  SETUP2.renderTeachers($("teachersCard"));
   await loadPeople();
 }
 async function loadPeople() {
@@ -346,7 +378,7 @@ async function loadPeople() {
   try { p = await rpc("api_people", { p_level: lvl.level_id }); } catch (e) { $("members").innerHTML = esc(e.message); return; }
   $("members").innerHTML = `<table class="cards-sm"><thead><tr><th>Name</th><th>E-mail</th><th>Role</th><th>Valid until</th><th></th></tr></thead><tbody>
     ${p.members.map((m) => `<tr><td data-l="Name"><strong>${esc(m.name || "—")}</strong>${m.me ? " (you)" : ""}</td><td data-l="E-mail">${esc(m.email)}</td>
-      <td data-l="Role">${esc(ROLE_LABEL[m.role])}${m.section ? " " + esc(m.section) : ""}</td>
+      <td data-l="Role">${esc(ROLE_LABEL[m.role])}${m.section ? " " + esc(m.section) : ""}${m.role === "teacher" && !m.teacher_id ? ' <span class="badge warn">not linked to the directory</span>' : ""}</td>
       <td data-l="Valid until">${m.role === "delegate" ? (m.valid_until ? esc(dayText(m.valid_until)) : "no end") + (m.expired ? ' <span class="badge no">ended</span>' : "") : ""}</td>
       <td><div class="row">${m.role === "delegate" ? `<button class="small secondary" data-renew="${m.user_id}">Renew</button>` : ""}${m.me ? "" : `<button class="small red" data-remove="${m.user_id}">Remove</button>`}</div></td></tr>`).join("")}
     </tbody></table><p class="muted">Renew = valid until ${p.renew_until ? esc(dayText(p.renew_until)) : "the end of the current semester (set its last day in Setup)"}.</p>`;

@@ -1,5 +1,5 @@
 // DeptDesk - reading and writing spreadsheets (SheetJS). Reads .xlsx, .xls, .ods, .csv; writes .xlsx (opens in LibreOffice).
-(window.DD_FILES = window.DD_FILES || {})["excel.js"] = "1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["excel.js"] = "2"; // file version, checked by the page
 
 function normaliseHeader(h) {
   return String(h).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -253,4 +253,153 @@ function exportFlatList(ctx, students) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheetFromRows(rows, [15, 22, 22, 8, 9, 9, 15, 7, 14]), "Students");
   XLSX.writeFile(wb, `Students_${safeFileName(ctx.levelShort)}_${safeFileName(ctx.semesterLabel)}_${todayIso()}.xlsx`);
+}
+
+// ================================================================ version 2: timetable and follow-up
+const DAY_NAMES = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const DAY_WORDS = [["sat", "sam", "samedi", "saturday"], ["sun", "dim", "dimanche", "sunday"], ["mon", "lun", "lundi", "monday"],
+  ["tue", "mar", "mardi", "tuesday"], ["wed", "mer", "mercredi", "wednesday"], ["thu", "jeu", "jeudi", "thursday"], ["fri", "ven", "vendredi", "friday"]];
+const KIND_LABEL = { course: "Course", td: "TD", tp: "TP" };
+function dayFromText(t) {
+  const h = normaliseHeader(t);
+  if (/^[0-6]$/.test(h)) return Number(h);
+  const i = DAY_WORDS.findIndex((w) => w.includes(h) || w.some((x) => h.startsWith(x) && x.length >= 3));
+  return i >= 0 ? i : null;
+}
+// "8h", "8h00", "08:00", "8.30", or a spreadsheet time (fraction of a day) -> "08:00"
+function timeFromText(t) {
+  const s = String(t || "").trim().toLowerCase().replace(/\s/g, "");
+  if (!s) return "";
+  if (/^0?\.\d+$/.test(s) || (/^\d*\.\d+$/.test(s) && Number(s) < 1)) {
+    const mins = Math.round(Number(s) * 1440); return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
+  }
+  const m = s.match(/^(\d{1,2})(?:[h:.](\d{0,2}))?$/);
+  if (!m) return "";
+  const hh = Number(m[1]), mm = Number(m[2] || 0);
+  if (hh > 23 || mm > 59) return "";
+  return String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+}
+function targetLabel(t) { return t ? t : "Section"; }
+function hm(t) { return String(t || "").slice(0, 5); }
+
+const TT_HEADER_WORDS = {
+  day: ["day", "jour"], starts: ["start", "starts", "debut", "heure_debut", "from", "de"], ends: ["end", "ends", "fin", "heure_fin", "to", "a"],
+  module: ["module", "code", "matiere", "module_code"], module_name: ["module_name", "intitule", "title", "name", "nom_du_module"],
+  kind: ["activity", "type", "kind", "nature", "activite"], target: ["group", "groupe", "public", "target", "groups"],
+  parity: ["week", "semaine", "parity", "parite"], room: ["room", "salle", "lieu"], teacher: ["teacher", "enseignant", "prof", "teachers"],
+};
+// The DeptDesk timetable template (one line per weekly slot), read from the first sheet that has Day / Start columns.
+function parseTimetableWorkbook(book) {
+  for (const name of book.names) {
+    const grid = book.sheets[name] || [];
+    for (let r = 0; r < Math.min(grid.length, 15); r++) {
+      const cols = {};
+      grid[r].forEach((cell, c) => {
+        const h = normaliseHeader(cell);
+        for (const [k, words] of Object.entries(TT_HEADER_WORDS)) if (cols[k] === undefined && words.includes(h)) cols[k] = c;
+      });
+      if (cols.day === undefined || cols.starts === undefined || cols.module === undefined) continue;
+      const rows = [], problems = [];
+      grid.slice(r + 1).forEach((row, i) => {
+        const get = (k) => (cols[k] === undefined ? "" : String(row[cols[k]] || "").trim());
+        if (!get("day") && !get("module")) return;
+        const line = String(r + 2 + i), day = dayFromText(get("day")), starts = timeFromText(get("starts")), ends = timeFromText(get("ends"));
+        if (day === null) { problems.push(`line ${line}: unknown day "${get("day")}"`); return; }
+        if (!starts || !ends) { problems.push(`line ${line}: start / end time not understood`); return; }
+        const p = get("parity").toUpperCase();
+        rows.push({ line, day, starts, ends, module: get("module"), module_name: get("module_name"), kind: get("kind"),
+          target: /^(section|all|tous|toute|whole)/i.test(get("target")) ? "" : get("target").toUpperCase().replace(/\s/g, ""),
+          parity: /(^|\s)(A|1|S1)$/.test(p) || /WEEK ?A|SEMAINE ?1/.test(p) ? "A" : /(^|\s)(B|2|S2)$/.test(p) || /WEEK ?B|SEMAINE ?2/.test(p) ? "B" : "all",
+          room: get("room"), teacher: get("teacher") });
+      });
+      return { sheet: name, rows, problems };
+    }
+  }
+  return { sheet: null, rows: [], problems: ["No sheet with the columns Day, Start, End, Module."] };
+}
+function exportTimetableTemplate(ctx, slots, sectionName) {
+  const rows = [["Day", "Start", "End", "Module", "Module name", "Activity", "Group", "Week", "Room", "Teacher"]];
+  (slots.length ? slots : [{ day: 0, starts: "08:00", ends: "09:30", module: "CODE", module_name: "Full name of the module", kind: "course", target: "", parity: "all", room: "103D", teacher: "Mme Name" }])
+    .forEach((s) => rows.push([DAY_NAMES[s.day], hm(s.starts), hm(s.ends), s.module, s.module_name || "", KIND_LABEL[s.kind] || s.kind, targetLabel(s.target),
+      s.parity === "all" ? "every week" : s.parity, s.room || "", s.teacher || ""]));
+  const help = [["How to fill the timetable template"], [],
+    ["Day", "Saturday ... Thursday (or Samedi ... Jeudi)"], ["Start / End", "08:00, 9h40, 11h20..."],
+    ["Module", "short code (AWP, DSP...): the same code on every line of the module"], ["Module name", "full name (once is enough)"],
+    ["Activity", "Course, TD or TP"], ["Group", "Section (whole section), G1, G2 (TD groups), SG1 ... SG6 (TP sub-groups)"],
+    ["Week", "every week, A or B (TP every two weeks)"], ["Room", "free text, can be changed later"], ["Teacher", "name as in the directory (Mme Raaf, M. Labandji)"]];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(rows, [11, 7, 7, 10, 36, 9, 9, 11, 12, 20]), "Timetable");
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(help, [14, 80]), "Help");
+  XLSX.writeFile(wb, `Timetable_${safeFileName(ctx.levelShort)}_${safeFileName(sectionName || "")}_${todayIso()}.xlsx`);
+}
+
+// The usual grid: one line per day, the six periods of 1 h 30 in columns; a 3-hour slot spans two columns (merged cells).
+const PERIODS = [["08:00", "09:30"], ["09:40", "11:10"], ["11:20", "12:50"], ["13:00", "14:30"], ["14:40", "16:10"], ["16:20", "17:50"]];
+const toMin = (t) => { const [h, m] = hm(t).split(":").map(Number); return h * 60 + m; };
+function periodRange(slot) {
+  const s = toMin(slot.starts), e = toMin(slot.ends), cols = [];
+  PERIODS.forEach(([a, b], i) => { if (Math.min(e, toMin(b)) - Math.max(s, toMin(a)) >= 40) cols.push(i); });
+  if (!cols.length) { let best = 0, bd = 1e9; PERIODS.forEach(([a], i) => { const d = Math.abs(toMin(a) - s); if (d < bd) { bd = d; best = i; } }); cols.push(best); }
+  return [cols[0], cols[cols.length - 1]];
+}
+function slotText(s, students) {
+  const head = `${s.module}${s.kind === "course" ? "" : " " + KIND_LABEL[s.kind]}${s.target ? " " + s.target : ""}${s.parity !== "all" ? " (week " + s.parity + ")" : ""}`;
+  const time = (s.kind === "tp" || hm(s.starts) !== PERIODS[periodRange(s)[0]][0]) ? ` ${hm(s.starts)}-${hm(s.ends)}` : "";
+  return [head + time, s.room || "", students || !s.teacher ? "" : "(" + s.teacher + ")"].filter(Boolean).join(" · ");
+}
+function timetableGridRows(slots, students) {
+  const days = [0, 1, 2, 3, 4, 5].concat(slots.some((s) => s.day === 6) ? [6] : []);
+  const rows = [["", ...PERIODS.map(([a, b]) => `${a}-${b}`)]], merges = [];
+  days.forEach((d, di) => {
+    const r = di + 1, row = [DAY_NAMES[d], "", "", "", "", "", ""];
+    // blocks: slots grouped by period range; overlapping ranges are joined
+    const blocks = [];
+    slots.filter((s) => s.day === d).sort((a, b) => toMin(a.starts) - toMin(b.starts)).forEach((s) => {
+      const [c0, c1] = periodRange(s);
+      const b = blocks.find((x) => !(c1 < x.c0 || c0 > x.c1));
+      if (b) { b.c0 = Math.min(b.c0, c0); b.c1 = Math.max(b.c1, c1); b.items.push(s); } else blocks.push({ c0, c1, items: [s] });
+    });
+    blocks.forEach((b) => {
+      row[b.c0 + 1] = b.items.map((s) => slotText(s, students)).join("\n");
+      if (b.c1 > b.c0) merges.push({ s: { r: r + 2, c: b.c0 + 1 }, e: { r: r + 2, c: b.c1 + 1 } });
+    });
+    rows.push(row);
+  });
+  return { rows, merges };
+}
+function exportTimetableGrid(ctx, slots, title, students) {
+  const g = timetableGridRows(slots, students);
+  const rows = [[`${ctx.levelName} - ${ctx.semesterLabel} - ${title}${students ? "" : " (with teachers)"}`], [], ...g.rows];
+  const ws = sheetFromRows(rows, [11, 28, 28, 28, 28, 28, 28], [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, ...g.merges]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Timetable");
+  XLSX.writeFile(wb, `Timetable_${safeFileName(ctx.levelShort)}_${safeFileName(title)}${students ? "_students" : ""}_${todayIso()}.xlsx`);
+}
+
+// Follow-up: the usual sheet per section (one line per module, Course / TD / TP columns) and a detailed sheet.
+function doneText(row) {
+  const n = row.in_person + row.online;
+  return row.online ? `${n} (${row.in_person} in person + ${row.online} online)` : n;
+}
+function exportFollowup(ctx, board) {
+  const wb = XLSX.utils.book_new();
+  const sections = [...new Set(board.rows.map((r) => r.section))];
+  const dateTxt = new Date(board.as_of + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  sections.forEach((sec) => {
+    const list = board.rows.filter((r) => r.section === sec);
+    const mods = [...new Set(list.map((r) => r.module))];
+    const rows = [[`${ctx.levelShort} - section ${sec}`, `Number of sessions done until ${dateTxt}`], ["", "Course", "TD", "TP"]];
+    mods.forEach((code) => {
+      const by = (k) => list.find((r) => r.module === code && r.kind === k);
+      const name = (list.find((r) => r.module === code) || {}).module_name || code;
+      rows.push([name, ...["course", "td", "tp"].map((k) => (by(k) ? doneText(by(k)) : ""))]);
+    });
+    XLSX.utils.book_append_sheet(wb, sheetFromRows(rows, [40, 26, 22, 22], [{ s: { r: 0, c: 1 }, e: { r: 0, c: 3 } }]), `Section ${sec}`.slice(0, 31));
+  });
+  const det = [["Section", "Module", "Activity", "Planned", "Done", "of which online", "Gap", "Detail by group", "Delegate remarks", "Teacher answers"]];
+  board.rows.forEach((r) => det.push([r.section, `${r.module} ${r.module_name || ""}`.trim(), KIND_LABEL[r.kind], r.planned, r.done, r.online, r.planned - r.done,
+    r.kind === "course" ? "" : r.targets.map((t) => `${t.target}: ${t.in_person + t.online}/${t.planned}`).join(", "),
+    r.remarks.map((x) => `${x.day}: ${x.note}`).join(" | "), r.teacher_answers.map((x) => `${x.day}: ${x.comment}`).join(" | ")]));
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(det, [8, 34, 9, 9, 7, 9, 6, 40, 50, 40]), "Detail");
+  XLSX.writeFile(wb, `Follow-up_${safeFileName(ctx.levelShort)}_${board.as_of}.xlsx`);
 }

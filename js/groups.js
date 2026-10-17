@@ -1,6 +1,6 @@
 // DeptDesk - Groups tab: allocation of the students of a section into TD groups and TP sub-groups,
 // lab partners (pairs), balance and suggested moves, automatic allocation, validation, import, exports.
-(window.DD_FILES = window.DD_FILES || {})["groups.js"] = "1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["groups.js"] = "2"; // file version, checked by the page
 
 const GROUPS = {
   sectionId: null, data: null, rev: null, kind: prefGet("kind", "tp"), filter: "all", q: "", view: "list", poll: null,
@@ -47,7 +47,7 @@ const GROUPS = {
       this.data = r; this.rev = r.rev;
       this.draw();
     } catch (e) {
-      if ($("gBody")) $("gBody").innerHTML = `<p>${esc(e.message)}</p>`;
+      if (has("gBody")) $("gBody").innerHTML = `<p>${esc(e.message)}</p>`;
       if (e.code === "MEMBERSHIP_EXPIRED") this.stop();
     }
   },
@@ -70,7 +70,7 @@ const GROUPS = {
   },
 
   draw() {
-    if (!this.data || !$("gBody")) return;
+    if (!this.data || !has("gBody")) return;
     const d = this.data, head = role() === "head";
     document.querySelectorAll("[data-kind]").forEach((b) => b.classList.toggle("on", b.dataset.kind === this.kind));
     document.querySelectorAll("[data-view]").forEach((b) => b.classList.toggle("on", b.dataset.view === this.view));
@@ -95,7 +95,7 @@ const GROUPS = {
     $("gBalance").querySelectorAll("[data-f]").forEach((x) => x.onclick = () => {
       const f = x.dataset.f; this.filter = /^\d+$/.test(f) ? Number(f) : f; this.drawBalance(); this.drawBody();
     });
-    if ($("suggestBtn")) $("suggestBtn").onclick = () => this.suggest();
+    if (has("suggestBtn")) $("suggestBtn").onclick = () => this.suggest();
   },
 
   visible() {
@@ -243,7 +243,7 @@ const GROUPS = {
     $("expPer").onclick = () => exportPerGroup(ctxNames(), this.data);
     $("expFlat").onclick = async () => { try { exportFlatList(ctxNames(), await rpc("api_students", { p_semester: APP.semester.id })); } catch (e) { toast(e.message, "error"); } };
     if (!head) return;
-    if ($("lockBtn")) $("lockBtn").onclick = async () => {
+    if (has("lockBtn")) $("lockBtn").onclick = async () => {
       const td = this.balance("td"), tp = this.balance("tp");
       const warn = [];
       if (td.unplaced) warn.push(`${td.unplaced} students without TD group`);
@@ -258,7 +258,7 @@ const GROUPS = {
       try { await rpc("api_alloc_lock", { p_section: this.sectionId, p_lock: true }); toast("Allocation validated.", "ok"); await reloadSections(); } catch (e) { toast(e.message, "error"); }
       this.reload();
     };
-    if ($("unlockBtn")) $("unlockBtn").onclick = async () => {
+    if (has("unlockBtn")) $("unlockBtn").onclick = async () => {
       try { await rpc("api_alloc_lock", { p_section: this.sectionId, p_lock: false }); toast("Reopened: the delegate can change it again.", "ok"); await reloadSections(); } catch (e) { toast(e.message, "error"); }
       this.reload();
     };
@@ -277,10 +277,10 @@ const GROUPS = {
     const out = $("impOut");
     out.innerHTML = `<p class="muted">Reading…</p>`;
     let parsed;
-    try { parsed = parseAllocationWorkbook(await readWorkbookGrid(file)); } catch (e) { out.innerHTML = `<p class="badge no">This file cannot be read.</p>`; return; }
-    if (!parsed.rows.length) { out.innerHTML = `<p class="badge no">No block "Groupe N" / "Sous-groupe N" found in this file.</p>`; return; }
+    try { parsed = parseAllocationWorkbook(await readWorkbookGrid(file)); } catch (e) { out.innerHTML = errorBox("This file cannot be read (" + e.message + ")."); return; }
+    if (!parsed.rows.length) { out.innerHTML = errorBox('No block "Groupe N" / "Sous-groupe N" found in this file.'); return; }
     let rep;
-    try { rep = await rpc("api_alloc_import", { p_section: this.sectionId, p_rows: parsed.rows, p_apply: false }); } catch (e) { out.innerHTML = `<p>${esc(e.message)}</p>`; return; }
+    try { rep = await rpc("api_alloc_import", { p_section: this.sectionId, p_rows: parsed.rows, p_apply: false }); } catch (e) { out.innerHTML = errorBox(e.message); return; }
     const P = (a) => (a.kind === "td" ? "G" : "SG") + a.group;
     const TXT = {
       unknown: (a) => `${a.name} (${a.matricule || "no number"}): not found in this section — not in the official list?`,
@@ -302,7 +302,7 @@ const GROUPS = {
     $("impApply").onclick = async () => {
       $("impApply").disabled = true;
       try { await rpc("api_alloc_import", { p_section: this.sectionId, p_rows: parsed.rows, p_apply: true }); toast("Allocation imported.", "ok"); out.innerHTML = ""; await reloadSections(); }
-      catch (e) { toast(e.message, "error"); $("impApply").disabled = false; }
+      catch (e) { out.insertAdjacentHTML("beforeend", errorBox(e.message)); $("impApply").disabled = false; }
       this.reload();
     };
   },
