@@ -1,10 +1,9 @@
 // DeptDesk - public page of a section (no account): the timetable for students (no teacher names) and,
 // with a student number, the TD group and the TP sub-group of the student.
-(window.DD_FILES = window.DD_FILES || {})["public.js"] = "2"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["public.js"] = "2.1"; // file version, checked by the page
 
 const token = new URLSearchParams(location.search).get("t") || "";
-let PUB = null, view = "";
-const hhmm = (t) => String(t || "").slice(0, 5);
+let PUB = null, view = "", week = null, day = null, auto = null;
 
 async function loadPublic() {
   try { PUB = await rpc("api_public_timetable", { p_token: token }); }
@@ -12,7 +11,9 @@ async function loadPublic() {
   document.documentElement.style.setProperty("--level", PUB.color || "#1B7F8C");
   $("pTitle").textContent = `${PUB.level_short || PUB.level} · section ${PUB.section}`;
   $("pSub").textContent = `${PUB.year} · semester ${PUB.period}${PUB.code ? " (" + PUB.code + ")" : ""}`;
-  $("pWeek").textContent = PUB.week_kind === "teaching" ? `This week is a week ${PUB.parity}: the TP marked "week ${PUB.parity}" take place.` : PUB.week_kind ? `This week: ${PUB.week_kind}.` : "";
+  auto = TTV.weekChoice(PUB.weeks || [], PUB.today || todayAlgiers());
+  week = auto.parity;
+  $("pWeek").textContent = auto.parity ? `Week ${auto.parity} = ${auto.label}${auto.no ? " (teaching week " + auto.no + ")" : ""}.` : "";
   const targets = [...new Set(PUB.slots.map((s) => s.target).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   try { view = localStorage.getItem("dd_pub_" + token) || ""; } catch (e) { view = ""; }
   $("pView").innerHTML = `<option value="">Everything</option>` + targets.map((t) => `<option value="${esc(t)}">${t.startsWith("SG") ? "TP sub-group" : "TD group"} ${esc(t)}</option>`).join("")
@@ -23,14 +24,13 @@ async function loadPublic() {
 }
 function draw() {
   const groups = view ? view.split("+") : [];
-  const list = PUB.slots.filter((s) => !groups.length || s.target === "" || groups.includes(s.target));
-  const days = [0, 1, 2, 3, 4, 5].concat(list.some((s) => s.day === 6) ? [6] : []);
-  $("pBody").innerHTML = list.length ? days.map((d) => {
-    const items = list.filter((s) => s.day === d);
-    return `<div class="day-row"><div class="dname">${DAYS[d]}</div><div class="slots">${items.map((s) => `<div class="slot" style="--mod:${esc(s.color)}">
-      <div class="t">${hhmm(s.starts)}–${hhmm(s.ends)} · ${esc(s.module)} ${s.kind === "course" ? "" : KIND_NAME[s.kind]}${s.target ? " · " + esc(s.target) : ""}${s.parity !== "all" ? ` <span class="pill">week ${s.parity}</span>` : ""}</div>
-      <div class="m">${esc(s.module_name || "")}</div><div class="m">📍 ${esc(s.room || "room?")}</div></div>`).join("") || '<span class="muted small-text">—</span>'}</div></div>`;
-  }).join("") : `<p class="muted">No timetable published yet.</p>`;
+  const list = PUB.slots.filter((x) => !groups.length || x.target === "" || groups.includes(x.target));
+  if (!list.length) { $("pBody").innerHTML = `<p class="muted">No timetable published yet.</p>`; return; }
+  const now = new Date(Date.now() + 3600000);
+  TTV.render($("pBody"), { slots: list, week, day, mode: groups.length ? "group" : "section", students: true,
+    phone: window.matchMedia("(max-width: 640px)").matches, today: PUB.today || todayAlgiers(), nowMin: now.getUTCHours() * 60 + now.getUTCMinutes(),
+    weekLabel: auto && week === auto.parity ? auto.label : "", canEdit: false,
+    onChange: (c) => { week = c.week; day = c.day; draw(); } });
 }
 $("pView").onchange = () => { view = $("pView").value; try { localStorage.setItem("dd_pub_" + token, view); } catch (e) { /* private mode */ } draw(); };
 $("pFind").onclick = async () => {

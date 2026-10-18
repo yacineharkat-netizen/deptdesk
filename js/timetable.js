@@ -1,9 +1,10 @@
-// DeptDesk v2 - Timetable tab: weekly slots by day, filters (group, teacher, room), students' / teachers' versions,
-// entry and changes (head), room changes (delegate), import / export Excel, print / PDF, public page of a section.
-(window.DD_FILES = window.DD_FILES || {})["timetable.js"] = "2"; // file version, checked by the page
+// DeptDesk v2.1 - Timetable tab: the week in proportional time (ttview.js), week A / B chosen from the calendar, day filter,
+// views (section, group, teacher, room), students' version, entry and changes (head), room changes (delegate),
+// import / export Excel, print / PDF, public page of a section.
+(window.DD_FILES = window.DD_FILES || {})["timetable.js"] = "2.1"; // file version, checked by the page
 
 const TT = {
-  sectionId: null, view: "", students: false, slots: [], sub: "week",
+  sectionId: null, view: "", students: false, slots: [], weeks: [], week: null, weekAuto: null, day: null,
 
   async render(m) {
     const secs = role() === "delegate" ? mySections() : APP.sections;
@@ -13,7 +14,7 @@ const TT = {
         ${secs.length > 1 ? `<div class="sec-chips no-print">${secs.map((x) => `<button data-tsec="${x.id}" class="${x.id === this.sectionId ? "on" : ""}">Section ${esc(x.name)}</button>`).join("")}</div>` : ""}
         <div class="row fill no-print"><select id="ttView"></select>
           <label class="tick" style="margin:0"><input type="checkbox" id="ttStudents" ${this.students ? "checked" : ""}> students' version (no teachers)</label></div>
-        <h2 id="ttTitle" style="margin:12px 0 6px"></h2><p class="muted" id="ttWeek" style="margin:0 0 10px"></p>
+        <h2 id="ttTitle" style="margin:12px 0 4px"></h2><p class="muted" id="ttWeek" style="margin:0 0 8px"></p>
         <div id="ttBody"><p class="muted">Loading…</p></div></div>
       <div class="card no-print" id="ttTools"></div>`;
     m.querySelectorAll("[data-tsec]").forEach((b) => b.onclick = () => { this.sectionId = b.dataset.tsec; this.view = ""; this.render(m); });
@@ -22,9 +23,11 @@ const TT = {
       await loadRefs();
       // a teacher's view covers every section; the others see one section
       this.slots = await rpc("api_timetable", { p_semester: APP.semester.id, p_section: null });
-      const weeks = await rpc("api_weeks", { p_semester: APP.semester.id });
-      const cur = weeks.find((w) => w.current);
-      $("ttWeek").textContent = cur ? (cur.kind === "teaching" ? `This week: teaching week ${cur.no}, week ${cur.parity}.` : `This week: ${cur.kind}.`) : "";
+      this.weeks = await rpc("api_weeks", { p_semester: APP.semester.id });
+      const ch = TTV.weekChoice(this.weeks, todayAlgiers());
+      this.weekAuto = ch;
+      if (!this.week) this.week = ch.parity;
+      $("ttWeek").textContent = ch.parity ? `Week ${ch.parity} = ${ch.label}${ch.no ? " (teaching week " + ch.no + ")" : ""}.` : "";
     } catch (e) { $("ttBody").innerHTML = errorBox(e.message); return; }
     this.fillViews(); this.draw(); this.tools();
   },
@@ -58,29 +61,28 @@ const TT = {
     return `Section ${sec ? sec.name : ""}${v ? " · " + v : ""}`;
   },
 
+  phone() { return window.matchMedia("(max-width: 640px)").matches; },
+  mode() { return this.view.startsWith("teacher:") || this.view.startsWith("room:") ? "other" : this.view ? "group" : "section"; },
   draw() {
-    const list = this.visibleSlots(), head = role() === "head", del = role() === "delegate";
-    const crossSections = this.view.startsWith("teacher:") || this.view.startsWith("room:");
-    $("ttTitle").textContent = this.title() + (this.students ? "" : "");
-    const days = [0, 1, 2, 3, 4, 5].concat(list.some((s) => s.day === 6) ? [6] : []);
-    $("ttBody").innerHTML = list.length || head ? days.map((d) => {
-      const items = list.filter((s) => s.day === d).sort((a, b) => a.starts.localeCompare(b.starts) || a.target.localeCompare(b.target));
-      return `<div class="day-row"><div class="dname">${DAYS[d]}${head && !crossSections ? ` <button class="small secondary no-print" data-add="${d}" title="Add a slot">+</button>` : ""}</div>
-        <div class="slots">${items.map((s) => `<div class="slot" style="--mod:${esc(s.color)}" ${head ? `data-edit="${s.id}"` : ""}>
-          <div class="t">${hm(s.starts)}–${hm(s.ends)} · ${esc(s.module)} ${s.kind === "course" ? "" : KIND_NAME[s.kind]}${s.target ? " · " + esc(s.target) : ""}${s.parity !== "all" ? ` <span class="pill">week ${s.parity}</span>` : ""}</div>
-          <div class="m">${crossSections ? "Section " + esc(s.section) + " · " : ""}${esc(s.module_name || "")}</div>
-          <div class="m">📍 ${esc(s.room || "room?")}${!this.students && s.teacher ? " · " + esc(s.teacher) : ""}
-            ${del ? ` <button class="linklike no-print" data-room="${s.id}" style="min-height:0">change room</button>` : ""}</div></div>`).join("") || '<span class="muted small-text">—</span>'}</div></div>`;
-    }).join("") : `<p class="muted">No timetable yet.${head ? " Add slots with + (each day), or import the Excel template below." : ""}</p>`;
-    $("ttBody").querySelectorAll("[data-add]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); this.editSlot(null, Number(b.dataset.add)); });
-    $("ttBody").querySelectorAll("[data-edit]").forEach((b) => b.onclick = () => this.editSlot(this.slots.find((s) => s.id === Number(b.dataset.edit))));
-    $("ttBody").querySelectorAll("[data-room]").forEach((b) => b.onclick = async () => {
-      const s = this.slots.find((x) => x.id === Number(b.dataset.room));
-      let v = null;
-      const ok = await askInPage({ title: `Room of ${s.module} ${KIND_NAME[s.kind]} ${s.target}`, ok: "Save", html: `<input id="nr" value="${esc(s.room)}">`, validate: (w) => { v = w.querySelector("#nr").value; return true; } });
-      if (!ok) return;
-      try { await rpc("api_slot_room", { p_slot: s.id, p_room: v }); toast("Room changed.", "ok"); this.render($("main")); } catch (e) { toast(e.message, "error"); }
-    });
+    const list = this.visibleSlots(), head = role() === "head", del = role() === "delegate", mode = this.mode();
+    $("ttTitle").textContent = this.title() + (this.day != null && !this.phone() ? " · " + DAYS[this.day] : "");
+    if (!list.length) { $("ttBody").innerHTML = `<p class="muted">No timetable yet.${head ? " Add a slot below, or import the Excel template." : ""}</p>`
+      + (head && mode !== "other" ? `<button class="secondary" id="ttFirst">+ Add a slot</button>` : "");
+      if (has("ttFirst")) $("ttFirst").onclick = () => this.editSlot(null, 0);
+      return; }
+    const now = new Date(Date.now() + 3600000);
+    TTV.render($("ttBody"), { slots: list, week: this.week, day: this.day, mode, students: this.students, phone: this.phone(),
+      today: todayAlgiers(), nowMin: now.getUTCHours() * 60 + now.getUTCMinutes(), showSection: mode === "other",
+      weekLabel: this.weekAuto && this.week === this.weekAuto.parity ? this.weekAuto.label : "",
+      canEdit: head && mode !== "other", onEdit: (sl) => this.editSlot(sl), onAdd: (d) => this.editSlot(null, d),
+      onRoom: del ? (sl) => this.changeRoom(sl) : null,
+      onChange: (c) => { this.week = c.week; this.day = c.day; this.draw(); } });
+  },
+  async changeRoom(s) {
+    let v = null;
+    const ok = await askInPage({ title: `Room of ${s.module} ${KIND_NAME[s.kind]} ${s.target}`, ok: "Save", html: `<input id="nr" value="${esc(s.room)}">`, validate: (w) => { v = w.querySelector("#nr").value; return true; } });
+    if (!ok) return;
+    try { await rpc("api_slot_room", { p_slot: s.id, p_room: v }); toast("Room changed.", "ok"); this.render($("main")); } catch (e) { toast(e.message, "error"); }
   },
 
   async editSlot(s, day) {
@@ -128,9 +130,9 @@ const TT = {
   tools() {
     const head = role() === "head", sec = this.section();
     $("ttTools").innerHTML = `<h3>Print and export</h3>
-      <div class="row"><button class="secondary" id="ttPrint">🖨 Print / PDF</button><button class="secondary" id="ttGrid">Excel grid</button>
+      <div class="row"><button class="secondary" id="ttPrint">🖨 Print / PDF</button><button class="secondary" id="ttGrid">Excel grid (+ TP rotation)</button>
         ${head ? `<button class="secondary" id="ttTpl">Excel template (one line per slot)</button>` : ""}</div>
-      <p class="muted">Print / PDF: in the print window choose "Save as PDF". The students' version hides the teachers.</p>
+      <p class="muted">Print / PDF prints the view on the screen (week, day): in the print window choose "Save as PDF". The students' version hides the teachers.</p>
       ${head && sec ? `<hr style="border:none;border-top:1px solid var(--ice2);margin:14px 0"><h3>Import the timetable of section ${esc(sec.name)}</h3>
         <p class="muted" style="margin-top:0">The Excel template: Day, Start, End, Module, Module name, Activity, Group, Week, Room, Teacher. Missing modules and teachers are created.</p>
         <input type="file" id="ttFile" accept=".xlsx,.xls,.ods,.csv"><div id="ttImpOut"></div>
@@ -138,7 +140,7 @@ const TT = {
         <p class="muted" style="margin-top:0">For the students, without account: the timetable (no teachers) and, with their student number, their TD group and TP sub-group.</p>
         <button class="secondary" id="ttPub">Show the link</button><div id="ttPubOut"></div>` : ""}`;
     $("ttPrint").onclick = () => window.print();
-    $("ttGrid").onclick = () => exportTimetableGrid(ctxNames(), this.visibleSlots(), this.title(), this.students);
+    $("ttGrid").onclick = () => exportTimetableGrid(ctxNames(), this.visibleSlots(), this.title(), this.students, this.mode() === "section");
     if (!head) return;
     $("ttTpl").onclick = () => exportTimetableTemplate(ctxNames(), this.slots.filter((s) => s.section_id === this.sectionId), sec ? "section_" + sec.name : "");
     if (!sec) return;

@@ -1,6 +1,6 @@
 // DeptDesk v2 - Follow-up tab: sessions of the day from the timetable (delegate), records, board (planned / done / gap),
 // starting point (head), the teacher's answers.
-(window.DD_FILES = window.DD_FILES || {})["followup.js"] = "2"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["followup.js"] = "2.1"; // file version, checked by the page
 
 const STATUS_NAME = { done: "done", cancelled: "cancelled", makeup: "make-up" };
 const TSTATE_NAME = { pending: "waiting for the teacher", confirmed: "confirmed by the teacher", auto_confirmed: "confirmed (no answer in time)", disputed: "the teacher disagrees" };

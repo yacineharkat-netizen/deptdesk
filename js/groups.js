@@ -1,6 +1,6 @@
 // DeptDesk - Groups tab: allocation of the students of a section into TD groups and TP sub-groups,
 // lab partners (pairs), balance and suggested moves, automatic allocation, validation, import, exports.
-(window.DD_FILES = window.DD_FILES || {})["groups.js"] = "2"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["groups.js"] = "2.1"; // file version, checked by the page
 
 const GROUPS = {
   sectionId: null, data: null, rev: null, kind: prefGet("kind", "tp"), filter: "all", q: "", view: "list", poll: null,

@@ -1,6 +1,6 @@
 // DeptDesk - application shell: level and semester, tabs by role, Setup, Students, People, Log, Admin.
 // The Groups tab is in groups.js.
-(window.DD_FILES = window.DD_FILES || {})["app.js"] = "2"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["app.js"] = "2.1"; // file version, checked by the page
 
 const APP = { me: null, level: null, semesters: [], semester: null, sections: [], tab: null, email: "", modules: null, teachers: null };
 const ROLE_LABEL = { head: "Head", delegate: "Delegate", teacher: "Teacher", admin: "Administrator" };

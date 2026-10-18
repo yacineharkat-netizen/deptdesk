@@ -1,5 +1,5 @@
 // DeptDesk - shared helpers for all pages.
-(window.DD_FILES = window.DD_FILES || {})["common.js"] = "2"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["common.js"] = "2.1"; // file version, checked by the page
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },
@@ -167,7 +167,7 @@ function askInPage(opts) {
   return new Promise((resolve) => {
     const wrap = document.createElement("div");
     wrap.className = "modal";
-    wrap.innerHTML = `<div class="modal-box" role="dialog" aria-modal="true">
+    wrap.innerHTML = `<div class="modal-box${opts.wide ? " wide" : ""}" role="dialog" aria-modal="true">
       ${opts.title ? `<h3>${esc(opts.title)}</h3>` : ""}<div class="dlg-body">${opts.html || ""}</div>
       <div class="actions">${opts.cancel === false ? "" : `<button class="secondary" data-a="no">${esc(opts.cancel || "Cancel")}</button>`}
       ${opts.ok === false ? "" : `<button class="${opts.danger ? "red" : ""}" data-a="yes">${esc(opts.ok || "OK")}</button>`}</div></div>`;

@@ -1,5 +1,5 @@
 // DeptDesk - reading and writing spreadsheets (SheetJS). Reads .xlsx, .xls, .ods, .csv; writes .xlsx (opens in LibreOffice).
-(window.DD_FILES = window.DD_FILES || {})["excel.js"] = "2"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["excel.js"] = "2.1"; // file version, checked by the page
 
 function normaliseHeader(h) {
   return String(h).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -343,7 +343,7 @@ function periodRange(slot) {
   return [cols[0], cols[cols.length - 1]];
 }
 function slotText(s, students) {
-  const head = `${s.module}${s.kind === "course" ? "" : " " + KIND_LABEL[s.kind]}${s.target ? " " + s.target : ""}${s.parity !== "all" ? " (week " + s.parity + ")" : ""}`;
+  const head = `${s.module}${s.kind === "course" || s.kind === "rotation" ? "" : " " + KIND_LABEL[s.kind]}${s.target ? " " + s.target : ""}${s.parity !== "all" ? " (week " + s.parity + ")" : ""}`;
   const time = (s.kind === "tp" || hm(s.starts) !== PERIODS[periodRange(s)[0]][0]) ? ` ${hm(s.starts)}-${hm(s.ends)}` : "";
   return [head + time, s.room || "", students || !s.teacher ? "" : "(" + s.teacher + ")"].filter(Boolean).join(" · ");
 }
@@ -367,12 +367,44 @@ function timetableGridRows(slots, students) {
   });
   return { rows, merges };
 }
-function exportTimetableGrid(ctx, slots, title, students) {
-  const g = timetableGridRows(slots, students);
+// v2.1: TP days of a whole section (several sub-groups in turn) become one line in the grid and a "TP rotation" sheet:
+// one line per sub-group, one column per time window, week A and week B side by side.
+function tpRotationDays(slots) {
+  return [0, 1, 2, 3, 4, 5, 6].filter((d) => new Set(slots.filter((s) => s.day === d && s.kind === "tp").map((s) => s.target)).size >= 2);
+}
+function tpRotationRows(slots, students) {
+  const rows = [];
+  tpRotationDays(slots).forEach((d) => {
+    const tp = slots.filter((s) => s.day === d && s.kind === "tp");
+    const wins = [...new Set(tp.map((s) => `${hm(s.starts)}-${hm(s.ends)}`))].sort();
+    const targets = [...new Set(tp.map((s) => s.target))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    rows.push([`${DAY_NAMES[d]} - TP rotation`], ["Sub-group", "Week", ...wins]);
+    targets.forEach((t) => {
+      const parities = [...new Set(tp.filter((s) => s.target === t).map((s) => s.parity))].sort();
+      parities.forEach((p) => rows.push([t, p === "all" ? "every week" : p, ...wins.map((w) => {
+        const s = tp.find((x) => x.target === t && x.parity === p && `${hm(x.starts)}-${hm(x.ends)}` === w);
+        return s ? [s.module, s.room || "", students || !s.teacher ? "" : "(" + s.teacher + ")"].filter(Boolean).join(" · ") : "";
+      })]));
+    });
+    rows.push([]);
+  });
+  return rows;
+}
+function exportTimetableGrid(ctx, slots, title, students, collapseTp) {
+  const tpDays = collapseTp ? tpRotationDays(slots) : [];
+  const gridSlots = slots.filter((s) => !(s.kind === "tp" && tpDays.includes(s.day)));
+  tpDays.forEach((d) => {
+    const tp = slots.filter((s) => s.day === d && s.kind === "tp");
+    const s0 = tp.reduce((m, s) => (s.starts < m ? s.starts : m), "99"), e0 = tp.reduce((m, s) => (s.ends > m ? s.ends : m), "");
+    gridSlots.push({ day: d, starts: s0, ends: e0, kind: "rotation", module: "TP in turn: see the sheet TP rotation", target: "", parity: "all", room: "" });
+  });
+  const g = timetableGridRows(gridSlots, students);
   const rows = [[`${ctx.levelName} - ${ctx.semesterLabel} - ${title}${students ? "" : " (with teachers)"}`], [], ...g.rows];
   const ws = sheetFromRows(rows, [11, 28, 28, 28, 28, 28, 28], [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }, ...g.merges]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Timetable");
+  const rot = tpRotationRows(slots, students);
+  if (rot.length) XLSX.utils.book_append_sheet(wb, sheetFromRows(rot, [12, 12, 30, 30, 30, 30]), "TP rotation");
   XLSX.writeFile(wb, `Timetable_${safeFileName(ctx.levelShort)}_${safeFileName(title)}${students ? "_students" : ""}_${todayIso()}.xlsx`);
 }
 

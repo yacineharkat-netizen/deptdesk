@@ -1,5 +1,5 @@
 // DeptDesk - sign-in page: log in, create an account, type an invitation code.
-(window.DD_FILES = window.DD_FILES || {})["index.js"] = "2"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["index.js"] = "2.1"; // file version, checked by the page
 
 const params = new URLSearchParams(location.search);
 const linkCode = (params.get("code") || "").toUpperCase();
