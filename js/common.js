@@ -1,5 +1,5 @@
 // DeptDesk - shared helpers for all pages.
-(window.DD_FILES = window.DD_FILES || {})["common.js"] = "2.1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["common.js"] = "2.2"; // file version, checked by the page
 
 const db = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
   auth: { persistSession: true, autoRefreshToken: true },

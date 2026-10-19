@@ -1,7 +1,7 @@
 // DeptDesk v2.1 - Timetable tab: the week in proportional time (ttview.js), week A / B chosen from the calendar, day filter,
 // views (section, group, teacher, room), students' version, entry and changes (head), room changes (delegate),
 // import / export Excel, print / PDF, public page of a section.
-(window.DD_FILES = window.DD_FILES || {})["timetable.js"] = "2.1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["timetable.js"] = "2.2"; // file version, checked by the page
 
 const TT = {
   sectionId: null, view: "", students: false, slots: [], weeks: [], week: null, weekAuto: null, day: null,
@@ -131,8 +131,10 @@ const TT = {
     const head = role() === "head", sec = this.section();
     $("ttTools").innerHTML = `<h3>Print and export</h3>
       <div class="row"><button class="secondary" id="ttPrint">🖨 Print / PDF</button><button class="secondary" id="ttGrid">Excel grid (+ TP rotation)</button>
+        <button class="secondary" id="ttTx">Export for ClassPulse</button>
         ${head ? `<button class="secondary" id="ttTpl">Excel template (one line per slot)</button>` : ""}</div>
-      <p class="muted">Print / PDF prints the view on the screen (week, day): in the print window choose "Save as PDF". The students' version hides the teachers.</p>
+      <p class="muted">Print / PDF prints the view on the screen (week, day): in the print window choose "Save as PDF". The students' version hides the teachers.
+        "Export for ClassPulse": the view on the screen (both weeks, all days) as a timetable-exchange file (.json), with the calendar and the cancelled / make-up sessions.</p>
       ${head && sec ? `<hr style="border:none;border-top:1px solid var(--ice2);margin:14px 0"><h3>Import the timetable of section ${esc(sec.name)}</h3>
         <p class="muted" style="margin-top:0">The Excel template: Day, Start, End, Module, Module name, Activity, Group, Week, Room, Teacher. Missing modules and teachers are created.</p>
         <input type="file" id="ttFile" accept=".xlsx,.xls,.ods,.csv"><div id="ttImpOut"></div>
@@ -140,12 +142,32 @@ const TT = {
         <p class="muted" style="margin-top:0">For the students, without account: the timetable (no teachers) and, with their student number, their TD group and TP sub-group.</p>
         <button class="secondary" id="ttPub">Show the link</button><div id="ttPubOut"></div>` : ""}`;
     $("ttPrint").onclick = () => window.print();
+    $("ttTx").onclick = () => this.exportExchange();
     $("ttGrid").onclick = () => exportTimetableGrid(ctxNames(), this.visibleSlots(), this.title(), this.students, this.mode() === "section");
     if (!head) return;
     $("ttTpl").onclick = () => exportTimetableTemplate(ctxNames(), this.slots.filter((s) => s.section_id === this.sectionId), sec ? "section_" + sec.name : "");
     if (!sec) return;
     $("ttFile").onchange = () => { const f = $("ttFile").files[0]; if (f) this.importPreview(f); };
     $("ttPub").onclick = () => this.publicLink(false);
+  },
+
+  async exportExchange() {
+    try {
+      const list = this.visibleSlots();
+      if (!list.length) { toast("Nothing to export in this view.", "error"); return; }
+      const [weeks, sessions] = await Promise.all([rpc("api_weeks", { p_semester: APP.semester.id }), rpc("api_sessions", { p_semester: APP.semester.id })]);
+      const x = buildTimetableExchange({ app: "DeptDesk", appVersion: document.documentElement.dataset.version,
+        department: (typeof CONFIG !== "undefined" && CONFIG.homeLine) || "", level: APP.level, semester: APP.semester, sections: APP.sections,
+        modules: APP.modules, slots: list, weeks, sessions, withTeachers: !this.students, scope: this.title() + (this.students ? " (students' version)" : "") });
+      const problems = validateTimetableExchange(x);
+      if (problems.length) { toast("Export refused: " + problems[0], "error"); return; }
+      const blob = new Blob([JSON.stringify(x, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `timetable-exchange_${safeFileName(ctxNames().levelShort)}_${safeFileName(this.title())}_${todayIso()}.json`;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast(`${x.slots.length} slots exported.`, "ok");
+    } catch (e) { toast(e.message, "error"); }
   },
 
   async importPreview(file) {

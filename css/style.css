@@ -1,5 +1,5 @@
 /* DeptDesk - shared styles (mobile first) */
-:root { --dd-version: "2.1";
+:root { --dd-version: "2.2";
   --navy: #0B2545; --navy2: #13315C; --ice: #E8F0F7; --ice2: #C9DCEB; --ink: #1B2430; --muted: #5A6B7D;
   --orange: #E8741E; --teal: #1B7F8C; --green: #2E7D4F; --red: #B83227; --bg: #F5F8FB; --white: #FFFFFF;
   --level: var(--teal);

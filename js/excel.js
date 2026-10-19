@@ -1,5 +1,5 @@
 // DeptDesk - reading and writing spreadsheets (SheetJS). Reads .xlsx, .xls, .ods, .csv; writes .xlsx (opens in LibreOffice).
-(window.DD_FILES = window.DD_FILES || {})["excel.js"] = "2.1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["excel.js"] = "2.2"; // file version, checked by the page
 
 function normaliseHeader(h) {
   return String(h).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -326,7 +326,7 @@ function exportTimetableTemplate(ctx, slots, sectionName) {
     ["Day", "Saturday ... Thursday (or Samedi ... Jeudi)"], ["Start / End", "08:00, 9h40, 11h20..."],
     ["Module", "short code (AWP, DSP...): the same code on every line of the module"], ["Module name", "full name (once is enough)"],
     ["Activity", "Course, TD or TP"], ["Group", "Section (whole section), G1, G2 (TD groups), SG1 ... SG6 (TP sub-groups)"],
-    ["Week", "every week, A or B (TP every two weeks)"], ["Room", "free text, can be changed later"], ["Teacher", "name as in the directory (Mme Raaf, M. Labandji)"]];
+    ["Week", "every week, A or B (TP every two weeks)"], ["Room", "free text, can be changed later"], ["Teacher", "name as in the directory (Mme Alpha, M. Bravo)"]];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheetFromRows(rows, [11, 7, 7, 10, 36, 9, 9, 11, 12, 20]), "Timetable");
   XLSX.utils.book_append_sheet(wb, sheetFromRows(help, [14, 80]), "Help");

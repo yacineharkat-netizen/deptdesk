@@ -1,7 +1,7 @@
 // DeptDesk v2.1 - timetable views shared by the application and the public page:
 //   week agenda in proportional time (block height = duration, free time visible), a TP day summarised in the
 //   whole-section view (click: the rotation table), one lane per group for a single day, the phone's day timeline.
-(window.DD_FILES = window.DD_FILES || {})["ttview.js"] = "2.1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["ttview.js"] = "2.2"; // file version, checked by the page
 
 const TTV = {
   DAY_START: 480, DAY_END: 1080,              // 08:00 - 18:00 (classes end at 17:50)

@@ -1,6 +1,6 @@
 // DeptDesk - public page of a section (no account): the timetable for students (no teacher names) and,
 // with a student number, the TD group and the TP sub-group of the student.
-(window.DD_FILES = window.DD_FILES || {})["public.js"] = "2.1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["public.js"] = "2.2"; // file version, checked by the page
 
 const token = new URLSearchParams(location.search).get("t") || "";
 let PUB = null, view = "", week = null, day = null, auto = null;

@@ -1,5 +1,5 @@
 // DeptDesk v2 - Setup additions (calendar weeks, modules and their teachers, follow-up settings) and the teachers directory (People tab).
-(window.DD_FILES = window.DD_FILES || {})["setup2.js"] = "2.1"; // file version, checked by the page
+(window.DD_FILES = window.DD_FILES || {})["setup2.js"] = "2.2"; // file version, checked by the page
 
 const SETUP2 = {
   async render(box) {
